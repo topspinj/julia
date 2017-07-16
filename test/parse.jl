@@ -228,4 +228,3 @@ end
 @test tryparse(Float64, "1.23") === Nullable(1.23)
 @test tryparse(Float32, "1.23") === Nullable(1.23f0)
 @test tryparse(Float16, "1.23") === Nullable(Float16(1.23))
-
