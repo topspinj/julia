@@ -230,7 +230,6 @@ match(r::Regex, s::AbstractString, i::Integer) = throw(ArgumentError(
 
 Return a vector of the matching substrings from [`eachmatch`](@ref).
 
-
 # Examples
 ```jldoctest
 julia> rx = r"a.a"
