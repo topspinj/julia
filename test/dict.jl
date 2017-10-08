@@ -381,7 +381,7 @@ end
     a[1] = a
     a[a] = 2
 
-    sa = similar(a)
+    sa = empty(a)
     @test isempty(sa)
     @test isa(sa, ObjectIdDict)
 
@@ -428,6 +428,50 @@ end
     d = Dict('a'=>1, 'b'=>1, 'c'=> 3)
     @test [d[k] for k in keys(d)] == [d[k] for k in eachindex(d)] ==
           [v for (k, v) in d] == [d[x[1]] for (i, x) in enumerate(d)]
+end
+
+@testset "similar" begin
+    d = Dict(:a=>2, :b=>3)
+
+    # v1.0: d2 = similar(d)
+    # v1.0: @test d2 isa typeof(d)
+    # v1.0: @test length(keys(d2)) == 2
+    # v1.0: @test :a ∈ keys(d2)
+    # v1.0: @test :b ∈ keys(d2)
+
+    d3 = similar(d, Float64)
+    @test d3 isa Dict{Symbol, Float64}
+    @test length(keys(d3)) == 2
+    @test :a ∈ keys(d3)
+    @test :b ∈ keys(d3)
+
+    d4 = similar(d, [10, 20, 30])
+    @test d4 isa Dict{Int, Int}
+    @test length(keys(d4)) == 3
+    @test 10 ∈ keys(d4)
+    @test 20 ∈ keys(d4)
+    @test 30 ∈ keys(d4)
+
+    d5 = similar(d, Float64, [10, 20, 30])
+    @test d5 isa Dict{Int, Float64}
+    @test length(keys(d5)) == 3
+    @test 10 ∈ keys(d5)
+    @test 20 ∈ keys(d5)
+    @test 30 ∈ keys(d5)
+
+    d6 = similar(d, (10, 20, 30))
+    @test d6 isa Dict{Int, Int}
+    @test length(keys(d6)) == 3
+    @test 10 ∈ keys(d6)
+    @test 20 ∈ keys(d6)
+    @test 30 ∈ keys(d6)
+
+    d7 = similar(d, Base.OneTo(3))
+    @test d7 isa Dict{Int, Int}
+    @test length(keys(d7)) == 3
+    @test 1 ∈ keys(d7)
+    @test 2 ∈ keys(d7)
+    @test 3 ∈ keys(d7)
 end
 
 @testset "generators, similar" begin
@@ -507,8 +551,8 @@ import Base.ImmutableDict
     @test get(d, k1, :default) === :default
     @test d1["key1"] === v1
     @test d4["key1"] === v2
-    @test similar(d3) === d
-    @test similar(d) === d
+    @test empty(d3) === d
+    @test empty(d) === d
 
     @test_throws KeyError d[k1]
     @test_throws KeyError d1["key2"]
@@ -649,8 +693,8 @@ Dict(1 => rand(2,3), 'c' => "asdf") # just make sure this does not trigger a dep
     @test !isempty(wkd)
 
     wkd = empty!(wkd)
-    @test wkd == similar(wkd)
-    @test typeof(wkd) == typeof(similar(wkd))
+    @test wkd == empty(wkd)
+    @test typeof(wkd) == typeof(empty(wkd))
     @test length(wkd) == 0
     @test isempty(wkd)
     @test isa(wkd, WeakKeyDict)

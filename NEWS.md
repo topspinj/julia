@@ -1249,6 +1249,13 @@ Deprecated or removed
 
   * `EnvHash` has been renamed to `EnvDict` ([#24167]).
 
+  * Introduced the `empty` function, the functional pair to `empty!` which returns a new,
+    empty container ([#24390]).
+
+  * `similar(::Associative)` has been deprecated in favor of `empty(::Associative)`, and
+    `similar(::Associative, ::Pair{K, V})` has been deprecated in favour of
+    `empty(::Associative, K, V)` ([#24390]).
+
 Command-line option changes
 ---------------------------
 
