@@ -126,9 +126,7 @@ Ac_mul_B!(y::AbstractVector, A::AbstractVecOrMat, x::AbstractVector) = generic_m
 # Matrix-matrix multiplication
 
 """
-```
-*(A::AbstractMatrix, B::AbstractMatrix)
-```
+    *(A::AbstractMatrix, B::AbstractMatrix)
 
 Matrix multiplication.
 
