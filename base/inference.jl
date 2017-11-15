@@ -88,6 +88,8 @@ struct InferenceParams
 
     # optimization
     inlining::Bool
+    ipo_constant_propagation::Bool
+    aggressive_constant_propagation::Bool
     inline_cost_threshold::Int  # number of CPU cycles beyond which it's not worth inlining
     inline_nonleaf_penalty::Int # penalty for dynamic dispatch
     inline_tupleret_bonus::Int  # extra willingness for non-isbits tuple return types
@@ -127,7 +129,7 @@ struct InferenceParams
                     union_splitting::Int = 4,
                     apply_union_enum::Int = 8)
         return new(Vector{InferenceResult}(),
-                   world, inlining, inline_cost_threshold, inline_nonleaf_penalty,
+                   world, inlining, true, false, inline_cost_threshold, inline_nonleaf_penalty,
                    inline_tupleret_bonus, max_methods, union_splitting, apply_union_enum,
                    tupletype_len, tuple_depth, tuple_splat)
     end
@@ -1945,7 +1947,7 @@ function abstract_call_gf_by_type(@nospecialize(f), argtypes::Vector{Any}, @nosp
             rettype === Any && break
         end
     end
-    if napplicable == 1 && !edgecycle && isa(rettype, Type)
+    if napplicable == 1 && !edgecycle && isa(rettype, Type) && sv.params.ipo_constant_propagation
         # if there's a possibility we could constant-propagate a better result
         # (hopefully without doing too much work), try to do that now
         # TODO: it feels like this could be better integrated into abstract_call_method / typeinf_edge
@@ -2030,6 +2032,17 @@ function abstract_call_method_with_const_args(argtypes::Vector{Any}, match::Simp
     code = code_for_method(method, sig, sparams, sv.params.world)
     code === nothing && return Any
     code = code::MethodInstance
+    # decide if it's likely to be worthwhile
+    cache_inlineable = false
+    if isdefined(code, :inferred)
+        cache_inf = code.inferred
+        if !(cache_inf === nothing)
+            cache_src_inferred = ccall(:jl_ast_flag_inferred, Bool, (Any,), cache_inf)
+            cache_src_inlineable = ccall(:jl_ast_flag_inlineable, Bool, (Any,), cache_inf)
+            cache_inlineable = cache_src_inferred && cache_src_inlineable
+        end
+    end
+    cache_inlineable || sv.params.aggressive_constant_propagation || return Any
     inf_result = cache_lookup(code, argtypes, sv.params.cache)
     if inf_result === nothing
         inf_result = InferenceResult(code)
@@ -2040,7 +2053,7 @@ function abstract_call_method_with_const_args(argtypes::Vector{Any}, match::Simp
                 atypes[i] = a # inject Const argtypes into inference
             end
         end
-        frame = InferenceState(inf_result, #=optimize=#true, #=cache=#false, sv.params)
+        frame = InferenceState(inf_result, #=optimize=#cache_inlineable, #=cache=#false, sv.params)
         frame.limited = true
         frame.parent = sv
         push!(sv.params.cache, inf_result)
@@ -4776,16 +4789,17 @@ function inlineable(@nospecialize(f), @nospecialize(ft), e::Expr, atypes::Vector
     if isa(inf_result, InferenceResult) && isa(inf_result.src, CodeInfo)
         linfo = inf_result.linfo
         result = inf_result.result
-        ## TODO: enable for pure functions
-        #if isa(result, Const)
-        #    inferred_const = result.val
-        #elseif isconstType(result)
-        #    inferred_const = result.parameters[1]
-        #end
-        #if @isdefined inferred_const
-        #    add_backedge!(linfo, sv)
-        #    return inline_as_constant(inferred_const, argexprs, sv, invoke_data)
-        #end
+        if (inf_result.src::CodeInfo).pure
+            if isa(result, Const)
+                inferred_const = result.val
+            elseif isconstType(result)
+                inferred_const = result.parameters[1]
+            end
+            if @isdefined inferred_const
+                add_backedge!(linfo, sv)
+                return inline_as_constant(inferred_const, argexprs, sv, invoke_data)
+            end
+        end
         inferred = inf_result.src
         rettype = widenconst(result)
     elseif isdefined(linfo, :inferred)
