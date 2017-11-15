@@ -2042,7 +2042,15 @@ function abstract_call_method_with_const_args(argtypes::Vector{Any}, match::Simp
             cache_inlineable = cache_src_inferred && cache_src_inlineable
         end
     end
-    cache_inlineable || sv.params.aggressive_constant_propagation || return Any
+    if !cache_inlineable && !sv.params.aggressive_constant_propagation
+        # in this case, see if all of the arguments are constants
+        for i in 1:nargs
+            a = argtypes[i]
+            if !isa(a, Const) && !isconstType(a)
+                return Any
+            end
+        end
+    end
     inf_result = cache_lookup(code, argtypes, sv.params.cache)
     if inf_result === nothing
         inf_result = InferenceResult(code)
@@ -2053,7 +2061,7 @@ function abstract_call_method_with_const_args(argtypes::Vector{Any}, match::Simp
                 atypes[i] = a # inject Const argtypes into inference
             end
         end
-        frame = InferenceState(inf_result, #=optimize=#cache_inlineable, #=cache=#false, sv.params)
+        frame = InferenceState(inf_result, #=optimize=#true, #=cache=#false, sv.params)
         frame.limited = true
         frame.parent = sv
         push!(sv.params.cache, inf_result)
@@ -2061,6 +2069,7 @@ function abstract_call_method_with_const_args(argtypes::Vector{Any}, match::Simp
     end
     result = inf_result.result
     isa(result, InferenceState) && return Any # TODO: is this recursive constant inference?
+    add_backedge!(inf_result.linfo, sv)
     return result
 end
 
@@ -2393,17 +2402,6 @@ function pure_eval_call(@nospecialize(f), argtypes::Vector{Any}, @nospecialize(a
 end
 
 argtypes_to_type(argtypes::Array{Any,1}) = Tuple{anymap(widenconst, argtypes)...}
-
-_Pair_name = nothing
-function Pair_name()
-    global _Pair_name
-    if _Pair_name === nothing
-        if isdefined(Main, :Base) && isdefined(Main.Base, :Pair)
-            _Pair_name = Main.Base.Pair.body.body.name
-        end
-    end
-    return _Pair_name
-end
 
 _typename(a) = Union{}
 _typename(a::Vararg) = Any
@@ -4785,7 +4783,22 @@ function inlineable(@nospecialize(f), @nospecialize(ft), e::Expr, atypes::Vector
 
     # see if the method has a InferenceResult in the current cache
     # or an existing inferred code info store in `.inferred`
-    inf_result = cache_lookup(linfo, atypes, sv.params.cache) # Union{Void, InferenceResult}
+    haveconst = false
+    for i in 1:length(atypes)
+        a = atypes[i]
+        if isa(a, Const) && !isdefined(typeof(a.val), :instance)
+            if !isleaftype(a.val) # alternately: !isa(a.val, DataType) || !isconstType(Type{a.val})
+                # have new information from argtypes that wasn't available from the signature
+                haveconst = true
+                break
+            end
+        end
+    end
+    if haveconst
+        inf_result = cache_lookup(linfo, atypes, sv.params.cache) # Union{Void, InferenceResult}
+    else
+        inf_result = nothing
+    end
     if isa(inf_result, InferenceResult) && isa(inf_result.src, CodeInfo)
         linfo = inf_result.linfo
         result = inf_result.result
